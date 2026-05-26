@@ -391,7 +391,22 @@ function triggerQTE(type) {
             if (idx === q.ans) {
                 if (gameState === 'BOMB_QTE') {
                     createExplosion(cw/2, ch/2, '#ff00ff', 150); enemyBullets = [];
-                    enemies.forEach(e => { e.hp -= 300; if(e.hp<=0) addScore(e.isBoss ? 500 : 50); });
+                    enemies.forEach(e => { 
+                        e.hp -= 200; // 傷害下調為 200
+                        // 修正：賦予完整的死亡結算邏輯，徹底消滅敵機
+                        if(e.hp <= 0 && !e.dead) {
+                            e.dead = true; 
+                            createExplosion(e.x, e.y, e.isBoss?'#ff0055':'#ffaa00', e.isBoss?80:15);
+                            if(e.isBoss) {
+                                addScore(1000 * currentStage); currentBoss = null; document.getElementById('boss-ui').style.display = 'none';
+                                for(let k=0; k<3; k++) drops.push(new DropItem(e.x - 40 + k*40, e.y));
+                                if(currentStage >= 10) { gameState = 'WIN'; alert("！！！恭喜通關！！！您成功拯救了整個星系！"); location.reload(); }
+                                else { stageManager.nextStage(); }
+                            } else { 
+                                addScore(e.tier === 'medium' ? 50 : 10); 
+                            }
+                        }
+                    });
                     player.bombs--; addScore(2000);
                 } else if (gameState === 'UPGRADE_QTE') {
                     // 答對，隨機出現一個補充包
