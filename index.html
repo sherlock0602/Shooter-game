@@ -205,22 +205,31 @@ const player = {
 };
 
 const stageManager = {
-    smallCount: 0, mediumCount: 0, maxSmall: 100, maxMedium: 20, 
+    smallCount: 0, mediumCount: 0, 
     bossSpawned: false, spawnTimer: 40, restTimer: 180,
     update(dt) {
-        if (currentBoss) return; if (this.restTimer > 0) { this.restTimer -= dt; return; }
+        if (currentBoss) return; 
+        if (this.restTimer > 0) { this.restTimer -= dt; return; }
+
+        // 依據關卡動態計算最大敵軍數量 (第1關 1倍 -> 第10關 2倍)
+        let diffMult = 1 + (currentStage - 1) / 9;
+        let currentMaxSmall = Math.floor(100 * diffMult);
+        let currentMaxMedium = Math.floor(20 * diffMult);
+
         this.spawnTimer -= dt;
         if (this.spawnTimer <= 0) {
-            if (this.smallCount < this.maxSmall || this.mediumCount < this.maxMedium) {
-                let batch = Math.floor(Math.random() * 2) + 1; 
+            if (this.smallCount < currentMaxSmall || this.mediumCount < currentMaxMedium) {
+                // 隨著關卡推進，一次生成的數量也會微微增加，確保能生完所有怪
+                let batch = Math.floor(Math.random() * 2) + Math.floor(diffMult); 
                 for (let i = 0; i < batch; i++) {
-                    if (Math.random() < 0.75 && this.smallCount < this.maxSmall) {
+                    if (Math.random() < 0.75 && this.smallCount < currentMaxSmall) {
                         enemies.push(new NormalEnemy('small')); this.smallCount++;
-                    } else if (this.mediumCount < this.maxMedium && this.smallCount > 5) {
+                    } else if (this.mediumCount < currentMaxMedium && this.smallCount > 5) {
                         enemies.push(new NormalEnemy('medium')); this.mediumCount++;
                     }
                 }
-                this.spawnTimer = 40 + Math.random() * 40; 
+                // 生成間隔也會隨著關卡微調縮短
+                this.spawnTimer = (40 + Math.random() * 40) / diffMult; 
             } else if (!this.bossSpawned && enemies.length === 0) {
                 currentBoss = new Boss(currentStage); enemies.push(currentBoss); this.bossSpawned = true;
             }
@@ -231,7 +240,6 @@ const stageManager = {
         this.restTimer = 200; document.getElementById('stage-ui').innerText = 'STAGE ' + currentStage;
     }
 };
-
 class Boss {
     constructor(id) {
         this.id = id; this.isBoss = true; this.name = `第 ${id} 階守護者`;
@@ -280,16 +288,25 @@ function spawnEBullet(x, y, vx, vy, c, size, isCurve=false) { enemyBullets.push(
 class NormalEnemy {
     constructor(tier) {
         this.tier = tier; this.isBoss = false;
+        
+        // 難度倍率計算 (第1關 1倍 -> 第10關 2倍)
+        let diffMult = 1 + (currentStage - 1) / 9;
+
         if (tier === 'small') {
-            this.hp = 1 + Math.random() * 1; this.w = 26; this.h = 26; this.color = '#00ffaa';
-            this.speedMod = 1.8 + Math.random() * 1.5; this.shootInterval = 120 + Math.random() * 80;
+            // 血量乘以倍率，開火間隔除以倍率 (時間變短 = 頻率變高)
+            this.hp = (1 + Math.random() * 1) * diffMult; 
+            this.w = 26; this.h = 26; this.color = '#00ffaa';
+            this.speedMod = 1.8 + Math.random() * 1.5; 
+            this.shootInterval = (120 + Math.random() * 80) / diffMult;
         } else {
-            this.hp = 8 + Math.random() * 4; this.w = 44; this.h = 44; this.color = '#ffaa00';
-            this.speedMod = 1.0 + Math.random() * 0.5; this.shootInterval = 70 + Math.random() * 50;
-            // 需求 1: 中型敵人偶爾不同的攻擊模式
+            this.hp = (8 + Math.random() * 4) * diffMult; 
+            this.w = 44; this.h = 44; this.color = '#ffaa00';
+            this.speedMod = 1.0 + Math.random() * 0.5; 
+            this.shootInterval = (70 + Math.random() * 50) / diffMult;
             const patterns = ['aim', 'spread', 'circle'];
             this.atkPattern = patterns[Math.floor(Math.random() * patterns.length)];
         }
+        
         const paths = ['sine', 'v_shape', 'hover', 'diagonal'];
         this.pathType = paths[Math.floor(Math.random() * paths.length)];
         this.x = Math.random() * (cw - 100) + 50; this.y = -40; this.time = Math.random() * 100;
@@ -306,7 +323,6 @@ class NormalEnemy {
         if(this.shootTimer <= 0) {
             if (this.tier === 'medium') {
                 let angle = Math.atan2(player.y - this.y, player.x - this.x);
-                // 需求 1: 實裝中怪的 3 種射擊模式
                 if (this.atkPattern === 'spread') {
                     for(let i=-1; i<=1; i++) spawnEBullet(this.x, this.y, Math.cos(angle+i*0.25)*4.5, Math.sin(angle+i*0.25)*4.5, '#ff7700', 5);
                 } else if (this.atkPattern === 'circle') {
@@ -324,7 +340,6 @@ class NormalEnemy {
         else { ctx.beginPath(); ctx.arc(this.x, this.y, this.w/2, 0, Math.PI*2); ctx.fill(); }
     }
 }
-
 class DropItem {
     constructor(x, y) {
         this.x = x; this.y = y; let r = Math.random(); this.time = 0;
