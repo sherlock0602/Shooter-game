@@ -22,7 +22,7 @@
         .touch-ctrl { position: absolute; pointer-events: auto; opacity: 0.5; transition: opacity 0.3s; }
         .touch-ctrl:active { opacity: 0.9; }
         #joystick-zone { bottom: 0; left: 0; width: 45%; height: 45%; }
-        #joystick-base { position: absolute; width: 110px; height: 110px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 2px solid #00ffff; display: none; transform: translate(-50%, -50%); }
+        #joystick-base { position: absolute; width: 110px; height: 110px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 2px solid #00ffff; display: block; opacity: 0.3; left: 120px; top: calc(100% - 120px); transform: translate(-50%, -50%); transition: opacity 0.2s; }
         #joystick-stick { position: absolute; width: 50px; height: 50px; border-radius: 50%; background: radial-gradient(circle, #00ffff, #005588); top: 50%; left: 50%; transform: translate(-50%, -50%); }
         
         /* 右下角雙排按鈕佈局 */
@@ -516,14 +516,21 @@ let joyActive = false, touchShooting = false, joyCenter = {x:0, y:0};
 
 joyZone.addEventListener('touchstart', e => {
     e.preventDefault(); let t = e.changedTouches[0]; joyActive = true; joyCenter = { x: t.clientX, y: t.clientY };
-    joyBase.style.display = 'block'; joyBase.style.left = joyCenter.x + 'px'; joyBase.style.top = joyCenter.y + 'px'; joyStick.style.transform = `translate(-50%, -50%)`;
+    joyBase.style.opacity = '0.8'; joyStick.style.transition = 'none'; // 按下時變亮，取消延遲
+    joyBase.style.left = joyCenter.x + 'px'; joyBase.style.top = joyCenter.y + 'px'; joyStick.style.transform = `translate(-50%, -50%)`;
 }, {passive: false});
 joyZone.addEventListener('touchmove', e => {
     e.preventDefault(); if (!joyActive) return; let t = e.changedTouches[0]; let dx = t.clientX - joyCenter.x, dy = t.clientY - joyCenter.y;
     let dist = Math.hypot(dx, dy), maxD = 45; if (dist > maxD) { dx = (dx/dist) * maxD; dy = (dy/dist) * maxD; }
     joyStick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; player.vx = (dx / maxD) * player.speed; player.vy = (dy / maxD) * player.speed;
 }, {passive: false});
-const resetJoy = e => { e.preventDefault(); joyActive = false; joyBase.style.display = 'none'; player.vx = 0; player.vy = 0; };
+const resetJoy = e => { 
+    e.preventDefault(); joyActive = false; 
+    joyBase.style.opacity = '0.3'; // 放開時變回半透明
+    joyBase.style.left = '120px'; joyBase.style.top = 'calc(100% - 120px)'; // 搖桿底座回到預設左下角
+    joyStick.style.transition = 'transform 0.2s'; joyStick.style.transform = `translate(-50%, -50%)`; // 內圈增加回彈動畫
+    player.vx = 0; player.vy = 0; 
+};
 joyZone.addEventListener('touchend', resetJoy); joyZone.addEventListener('touchcancel', resetJoy);
 
 document.getElementById('btn-shoot').addEventListener('touchstart', e => { e.preventDefault(); touchShooting = true; });
