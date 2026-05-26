@@ -392,7 +392,7 @@ function triggerQTE(type) {
                 if (gameState === 'BOMB_QTE') {
                     createExplosion(cw/2, ch/2, '#ff00ff', 150); enemyBullets = [];
                     enemies.forEach(e => { 
-                        e.hp -= 200; // 傷害下調為 200
+                        e.hp -= 150; // 傷害下調為 150
                         // 修正：賦予完整的死亡結算邏輯，徹底消滅敵機
                         if(e.hp <= 0 && !e.dead) {
                             e.dead = true; 
