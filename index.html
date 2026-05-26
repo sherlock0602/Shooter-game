@@ -131,7 +131,11 @@ const player = {
         if (keys['ArrowRight'] || keys['d'] || keys['D']) mx = 1;
         
         if(mx !== 0 && my !== 0) { mx *= 0.707; my *= 0.707; } 
-        this.x += mx * this.speed * dt; this.y += my * this.speed * dt;
+        
+        // 🌟 修正點：將鍵盤輸入 (mx, my) 與平板觸控搖桿 (this.vx, this.vy) 的動力合併
+        this.x += (mx * this.speed + (this.vx || 0)) * dt; 
+        this.y += (my * this.speed + (this.vy || 0)) * dt;
+        
         this.isShooting = (keys[' '] || keys['z'] || keys['Z'] || touchShooting);
         
         this.x = Math.max(this.w/2, Math.min(cw - this.w/2, this.x));
