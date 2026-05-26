@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>雷電傳承 V5：星辰與深淵的極限彈幕</title>
+    <title>雷電傳承 V6：星辰與深淵的極限彈幕</title>
     <style>
         * { box-sizing: border-box; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: none; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #020208; overflow: hidden; font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; }
@@ -25,7 +25,6 @@
         #joystick-base { position: absolute; width: 110px; height: 110px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 2px solid #00ffff; display: block; opacity: 0.3; left: 120px; top: calc(100% - 120px); transform: translate(-50%, -50%); transition: opacity 0.2s; }
         #joystick-stick { position: absolute; width: 50px; height: 50px; border-radius: 50%; background: radial-gradient(circle, #00ffff, #005588); top: 50%; left: 50%; transform: translate(-50%, -50%); }
         
-        /* 右下角雙排按鈕佈局 */
         #btn-zone { bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; }
         .btn-row { display: flex; gap: 10px; justify-content: flex-end; }
         .action-btn { width: 70px; height: 70px; border-radius: 50%; color: white; font-weight: bold; font-size: 14px; display: flex; justify-content: center; align-items: center; border: 2px solid #fff; box-shadow: 0 0 15px rgba(255,255,255,0.3); text-align: center; line-height: 1.2; }
@@ -37,11 +36,41 @@
         #question-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: linear-gradient(135deg, rgba(5,5,25,0.95), rgba(15,0,40,0.95)); border: 3px solid #ff0055; padding: 30px; border-radius: 15px; color: white; text-align: center; display: none; pointer-events: auto; width: 85%; max-width: 450px; box-shadow: 0 0 40px #ff0055; z-index: 999; }
         .option-btn { display: block; width: 100%; margin: 12px 0; padding: 14px; background: rgba(255,255,255,0.05); border: 1px solid #00ffff; color: #00ffff; font-size: 16px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-weight: bold; }
         .option-btn:hover, .option-btn:active { background: #00ffff; color: #000; box-shadow: 0 0 15px #00ffff; }
+
+        /* ====== 新增：選單與結算畫面覆蓋層 ====== */
+        .fullscreen-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(2, 2, 8, 0.85); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 2000; pointer-events: auto;
+        }
+        .menu-title { font-size: 42px; font-weight: bold; margin-bottom: 10px; text-align: center; text-shadow: 0 0 20px; }
+        .menu-subtitle { color: #aaa; font-size: 18px; margin-bottom: 40px; letter-spacing: 2px; }
+        .menu-btn {
+            padding: 15px 50px; font-size: 22px; font-weight: bold; color: #00ffff;
+            background: rgba(0, 255, 255, 0.1); border: 2px solid #00ffff; border-radius: 10px;
+            cursor: pointer; transition: all 0.2s; text-shadow: 0 0 5px #00ffff;
+        }
+        .menu-btn:hover, .menu-btn:active { background: #00ffff; color: #000; box-shadow: 0 0 30px #00ffff; }
+        #summary-screen { display: none; }
     </style>
 </head>
 <body>
 
 <canvas id="gameCanvas"></canvas>
+
+<div id="start-screen" class="fullscreen-overlay">
+    <div class="menu-title" style="color: #00ffff;">雷電傳承：星系救援</div>
+    <div class="menu-subtitle">準備好面對深淵的彈幕了嗎？</div>
+    <div id="btn-start-game" class="menu-btn">開始出擊</div>
+</div>
+
+<div id="summary-screen" class="fullscreen-overlay">
+    <div id="summary-title" class="menu-title">戰鬥終了</div>
+    <div style="color: #fff; font-size: 24px; margin-bottom: 40px;">
+        最終得分：<span id="summary-score" style="color: #fff500; font-size: 36px; font-weight: bold;">0</span>
+    </div>
+    <div id="btn-restart-game" class="menu-btn">重新開始</div>
+</div>
 
 <div id="ui-layer">
     <div class="ui-box">
@@ -82,6 +111,7 @@
     <p id="q-text" style="font-size:18px; line-height:1.5;">讀取系統矩陣中...</p>
     <div id="q-options"></div>
 </div>
+
 <script src="questions.js"></script>
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -89,8 +119,10 @@ const ctx = canvas.getContext('2d');
 let cw = canvas.width = window.innerWidth;
 let ch = canvas.height = window.innerHeight;
 
-let score = 0; let timeScale = 1.0; let gameState = 'PLAYING'; let currentStage = 1; 
-let upgradeCooldown = 0; // 補給呼叫 CD 時間
+// 遊戲狀態機控制 (新增 START_MENU, GAME_OVER, WIN)
+let gameState = 'START_MENU'; 
+let score = 0; let timeScale = 1.0; let currentStage = 1; 
+let upgradeCooldown = 0; 
 let bullets = [], enemyBullets = [], enemies = [], particles = [], drops = [], stars = [];
 const keys = {}; 
 
@@ -101,9 +133,7 @@ let questionBank = [
     { q: "當戰機失去一條生命時，分數會發生什麼變化？", options: ["清零", "扣除 10%", "扣除 50%", "不變"], ans: 1 },
     { q: "切換武器系統的冷卻時間大約是幾秒？", options: ["沒有冷卻", "1 秒", "2 秒", "5 秒"], ans: 2 }
 ];
-if (typeof externalQuestions !== 'undefined') {
-    questionBank = externalQuestions;
-}
+if (typeof externalQuestions !== 'undefined') { questionBank = externalQuestions; }
 
 function addScore(points) { score += points; updateUI(); }
 function penalizeScore() { score = Math.floor(score * 0.9); updateUI(); }
@@ -118,7 +148,7 @@ const player = {
     x: cw / 2, y: ch - 120, w: 44, h: 44, speed: 7.5,
     lives: 3, shield: 5, maxShield: 5, bombs: 3, maxBombs: 5, 
     weaponLevel: 1, weaponIndex: 0, switchCd: 0, maxLevel: 3,
-    isShooting: false, shootTimer: 0, invulnTimer: 0,
+    isShooting: false, shootTimer: 0, invulnTimer: 0, vx: 0, vy: 0,
     
     update(dt) {
         if (this.invulnTimer > 0) this.invulnTimer -= dt;
@@ -132,12 +162,10 @@ const player = {
         
         if(mx !== 0 && my !== 0) { mx *= 0.707; my *= 0.707; } 
         
-        // 🌟 修正點：將鍵盤輸入 (mx, my) 與平板觸控搖桿 (this.vx, this.vy) 的動力合併
         this.x += (mx * this.speed + (this.vx || 0)) * dt; 
         this.y += (my * this.speed + (this.vy || 0)) * dt;
         
         this.isShooting = (keys[' '] || keys['z'] || keys['Z'] || touchShooting);
-        
         this.x = Math.max(this.w/2, Math.min(cw - this.w/2, this.x));
         this.y = Math.max(this.h/2, Math.min(ch - this.h/2, this.y));
 
@@ -149,14 +177,12 @@ const player = {
     switchWeapon() {
         if (this.switchCd <= 0 && gameState === 'PLAYING') {
             this.weaponIndex = (this.weaponIndex + 1) % weaponData.length;
-            this.switchCd = 120; // 2秒冷卻
-            createExplosion(this.x, this.y, weaponData[this.weaponIndex].color, 15);
-            updateUI();
+            this.switchCd = 120; 
+            createExplosion(this.x, this.y, weaponData[this.weaponIndex].color, 15); updateUI();
         }
     },
     shoot() {
-        let type = weaponData[this.weaponIndex].id;
-        let lv = this.weaponLevel;
+        let type = weaponData[this.weaponIndex].id; let lv = this.weaponLevel;
         if (type === 'SPREAD') {
             this.shootTimer = 10;
             bullets.push({ x: this.x, y: this.y - 20, vx: 0, vy: -15, c: '#00ffff', w: 5, h: 15, pierce: false });
@@ -179,11 +205,14 @@ const player = {
             createExplosion(this.x, this.y, '#ffffff', 50);
             this.shield = this.maxShield; this.weaponLevel = Math.max(1, this.weaponLevel - 1);
             this.x = cw / 2; this.y = ch - 120; this.invulnTimer = 90; 
-            if(this.lives < 0) { gameState = 'GAME_OVER'; alert("戰機全毀！最終得分: " + score); location.reload(); }
+            
+            // 觸發戰敗結算
+            if(this.lives < 0) { showSummaryScreen(false); }
         }
         updateUI();
     },
     draw() {
+        if (gameState !== 'PLAYING' && gameState !== 'BOMB_QTE' && gameState !== 'UPGRADE_QTE') return;
         if (this.invulnTimer > 0 && Math.floor(this.invulnTimer / 4) % 2 === 0) return; 
         ctx.save();
         let c = weaponData[this.weaponIndex].color;
@@ -211,15 +240,12 @@ const stageManager = {
         if (currentBoss) return; 
         if (this.restTimer > 0) { this.restTimer -= dt; return; }
 
-        // 依據關卡動態計算最大敵軍數量 (第1關 1倍 -> 第10關 2倍)
         let diffMult = 1 + (currentStage - 1) / 9;
-        let currentMaxSmall = Math.floor(100 * diffMult);
-        let currentMaxMedium = Math.floor(20 * diffMult);
+        let currentMaxSmall = Math.floor(100 * diffMult); let currentMaxMedium = Math.floor(20 * diffMult);
 
         this.spawnTimer -= dt;
         if (this.spawnTimer <= 0) {
             if (this.smallCount < currentMaxSmall || this.mediumCount < currentMaxMedium) {
-                // 隨著關卡推進，一次生成的數量也會微微增加，確保能生完所有怪
                 let batch = Math.floor(Math.random() * 2) + Math.floor(diffMult); 
                 for (let i = 0; i < batch; i++) {
                     if (Math.random() < 0.75 && this.smallCount < currentMaxSmall) {
@@ -228,7 +254,6 @@ const stageManager = {
                         enemies.push(new NormalEnemy('medium')); this.mediumCount++;
                     }
                 }
-                // 生成間隔也會隨著關卡微調縮短
                 this.spawnTimer = (40 + Math.random() * 40) / diffMult; 
             } else if (!this.bossSpawned && enemies.length === 0) {
                 currentBoss = new Boss(currentStage); enemies.push(currentBoss); this.bossSpawned = true;
@@ -240,6 +265,7 @@ const stageManager = {
         this.restTimer = 200; document.getElementById('stage-ui').innerText = 'STAGE ' + currentStage;
     }
 };
+
 class Boss {
     constructor(id) {
         this.id = id; this.isBoss = true; this.name = `第 ${id} 階守護者`;
@@ -288,12 +314,9 @@ function spawnEBullet(x, y, vx, vy, c, size, isCurve=false) { enemyBullets.push(
 class NormalEnemy {
     constructor(tier) {
         this.tier = tier; this.isBoss = false;
-        
-        // 難度倍率計算 (第1關 1倍 -> 第10關 2倍)
         let diffMult = 1 + (currentStage - 1) / 9;
 
         if (tier === 'small') {
-            // 血量乘以倍率，開火間隔除以倍率 (時間變短 = 頻率變高)
             this.hp = (1 + Math.random() * 1) * diffMult; 
             this.w = 26; this.h = 26; this.color = '#00ffaa';
             this.speedMod = 1.8 + Math.random() * 1.5; 
@@ -327,9 +350,7 @@ class NormalEnemy {
                     for(let i=-1; i<=1; i++) spawnEBullet(this.x, this.y, Math.cos(angle+i*0.25)*4.5, Math.sin(angle+i*0.25)*4.5, '#ff7700', 5);
                 } else if (this.atkPattern === 'circle') {
                     for(let i=0; i<8; i++) { let a = (Math.PI*2/8)*i; spawnEBullet(this.x, this.y, Math.cos(a)*3.5, Math.sin(a)*3.5, '#ff0055', 6); }
-                } else {
-                    spawnEBullet(this.x, this.y, Math.cos(angle)*5, Math.sin(angle)*5, '#ff3300', 5);
-                }
+                } else { spawnEBullet(this.x, this.y, Math.cos(angle)*5, Math.sin(angle)*5, '#ff3300', 5); }
             } else { spawnEBullet(this.x, this.y+10, 0, 4.5, '#ffffff', 4); }
             this.shootTimer = this.shootInterval;
         }
@@ -340,6 +361,7 @@ class NormalEnemy {
         else { ctx.beginPath(); ctx.arc(this.x, this.y, this.w/2, 0, Math.PI*2); ctx.fill(); }
     }
 }
+
 class DropItem {
     constructor(x, y) {
         this.x = x; this.y = y; let r = Math.random(); this.time = 0;
@@ -364,7 +386,6 @@ function createExplosion(x, y, color, count) {
     for(let i=0; i<count; i++) { let angle = Math.random()*Math.PI*2; let speed = Math.random()*6 + 2; particles.push({ x, y, vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed, color, size:Math.random()*5+1, alpha:1 }); }
 }
 
-// 需求 3: 統整 QTE 觸發系統 (大招 與 補給)
 function triggerQTE(type) {
     if (gameState !== 'PLAYING') return;
     
@@ -372,13 +393,11 @@ function triggerQTE(type) {
     if (type === 'BOMB') {
         if (player.bombs <= 0) return;
         gameState = 'BOMB_QTE'; timeScale = 0.015; 
-        titleEl.innerText = "⚠️ 核心極限超載 (大招) ⚠️";
-        titleEl.style.color = "#ff0055";
+        titleEl.innerText = "⚠️ 核心極限超載 (大招) ⚠️"; titleEl.style.color = "#ff0055";
     } else if (type === 'UPGRADE') {
         if (upgradeCooldown > 0) return;
-        gameState = 'UPGRADE_QTE'; timeScale = 0.1; // 速度較快，10%時間流速 (敵機子彈依然肉眼可見逼近)
-        titleEl.innerText = "📦 呼叫軌道空投 (補給) 📦";
-        titleEl.style.color = "#ffaa00";
+        gameState = 'UPGRADE_QTE'; timeScale = 0.1; 
+        titleEl.innerText = "📦 呼叫軌道空投 (補給) 📦"; titleEl.style.color = "#ffaa00";
     }
 
     const q = questionBank[Math.floor(Math.random() * questionBank.length)];
@@ -392,30 +411,25 @@ function triggerQTE(type) {
                 if (gameState === 'BOMB_QTE') {
                     createExplosion(cw/2, ch/2, '#ff00ff', 150); enemyBullets = [];
                     enemies.forEach(e => { 
-                        e.hp -= 50; // 傷害下調為 50
-                        // 修正：賦予完整的死亡結算邏輯，徹底消滅敵機
+                        e.hp -= 50; 
                         if(e.hp <= 0 && !e.dead) {
-                            e.dead = true; 
-                            createExplosion(e.x, e.y, e.isBoss?'#ff0055':'#ffaa00', e.isBoss?80:15);
+                            e.dead = true; createExplosion(e.x, e.y, e.isBoss?'#ff0055':'#ffaa00', e.isBoss?80:15);
                             if(e.isBoss) {
                                 addScore(1000 * currentStage); currentBoss = null; document.getElementById('boss-ui').style.display = 'none';
                                 for(let k=0; k<3; k++) drops.push(new DropItem(e.x - 40 + k*40, e.y));
-                                if(currentStage >= 10) { gameState = 'WIN'; alert("！！！恭喜通關！！！您成功拯救了整個星系！"); location.reload(); }
-                                else { stageManager.nextStage(); }
-                            } else { 
-                                addScore(e.tier === 'medium' ? 50 : 10); 
-                            }
+                                
+                                // 觸發勝利結算
+                                if(currentStage >= 10) { showSummaryScreen(true); } else { stageManager.nextStage(); }
+                            } else { addScore(e.tier === 'medium' ? 50 : 10); }
                         }
                     });
                     player.bombs--; addScore(2000);
                 } else if (gameState === 'UPGRADE_QTE') {
-                    // 答對，隨機出現一個補充包
-                    drops.push(new DropItem(cw/2 + (Math.random()*100 - 50), -20));
-                    upgradeCooldown = 600; // 10秒冷卻
+                    drops.push(new DropItem(cw/2 + (Math.random()*100 - 50), -20)); upgradeCooldown = 600; 
                 }
             } else { 
                 if (gameState === 'BOMB_QTE') player.bombs--;
-                else if (gameState === 'UPGRADE_QTE') upgradeCooldown = 600; // 答錯也進CD，且無掉落
+                else if (gameState === 'UPGRADE_QTE') upgradeCooldown = 600; 
             }
             document.getElementById('question-modal').style.display = 'none';
             gameState = 'PLAYING'; timeScale = 1.0; updateUI();
@@ -439,90 +453,119 @@ function updateUI() {
     sBar.style.width = pct + '%'; sBar.style.background = pct > 40 ? 'lime' : 'red';
 }
 
-let lastTime = 0; let currentBoss = null;
+// ====== 新增：遊戲初始化與重置機制 ======
+function initGame() {
+    score = 0; currentStage = 1; upgradeCooldown = 0; timeScale = 1.0;
+    bullets = []; enemyBullets = []; enemies = []; particles = []; drops = [];
+    
+    player.x = cw / 2; player.y = ch - 120;
+    player.lives = 3; player.shield = 5; player.bombs = 3; player.weaponLevel = 1; player.switchCd = 0;
+    player.vx = 0; player.vy = 0; player.isShooting = false; player.invulnTimer = 0;
+    
+    for (let k in keys) keys[k] = false; // 清除殘留鍵盤狀態
+    touchShooting = false;
+    
+    stageManager.smallCount = 0; stageManager.mediumCount = 0; 
+    stageManager.bossSpawned = false; stageManager.spawnTimer = 40; stageManager.restTimer = 180;
+    
+    currentBoss = null;
+    document.getElementById('boss-ui').style.display = 'none';
+    document.getElementById('stage-ui').innerText = 'STAGE 1';
+    
+    updateUI();
+}
 
+// ====== 新增：顯示結算畫面 ======
+function showSummaryScreen(isWin) {
+    gameState = isWin ? 'WIN' : 'GAME_OVER';
+    let titleEl = document.getElementById('summary-title');
+    titleEl.innerText = isWin ? '！！！星系拯救成功！！！' : '戰機全毀，任務失敗';
+    titleEl.style.color = isWin ? '#00ffaa' : '#ff0055';
+    titleEl.style.textShadow = isWin ? '0 0 20px #00ffaa' : '0 0 20px #ff0055';
+    document.getElementById('summary-score').innerText = score;
+    document.getElementById('summary-screen').style.display = 'flex';
+}
+
+// 主渲染迴圈
+let lastTime = 0; 
 function loop(timestamp) {
     let dt = (timestamp - lastTime) / (1000 / 60); if(isNaN(dt) || dt > 4) dt = 1; lastTime = timestamp;
     let sDt = dt * timeScale;
 
+    // 背景星空 (無論什麼狀態都會持續飄動，營造選單氣氛)
     ctx.fillStyle = '#02020a'; ctx.fillRect(0, 0, cw, ch); ctx.fillStyle = '#fff';
     stars.forEach(s => { s.y += s.speed * sDt; if(s.y > ch) { s.y = -10; s.x = Math.random()*cw; } ctx.fillRect(s.x, s.y, s.size, s.size); });
 
-    player.update(dt); player.draw();
-    
-    if(player.switchCd > 0) {
-        document.getElementById('wpn-cd').innerText = `[切換: ${(player.switchCd/60).toFixed(1)}s]`;
-    } else { document.getElementById('wpn-cd').innerText = ''; }
-
-    // 處理空投冷卻 UI 顯示
-    if(upgradeCooldown > 0) {
-        upgradeCooldown -= dt;
-        document.getElementById('upg-cd').innerText = `[空投: ${(upgradeCooldown/60).toFixed(1)}s]`;
-    } else { document.getElementById('upg-cd').innerText = '[空投: 準備就緒]'; }
-
-    stageManager.update(sDt);
-    if (currentBoss) document.getElementById('boss-hp-bar').style.width = (Math.max(0, currentBoss.hp) / currentBoss.maxHp)*100 + '%';
-
-    bullets.forEach((b, i) => {
-        b.y += b.vy * dt; b.x += b.vx * dt; ctx.fillStyle = b.c; ctx.fillRect(b.x-b.w/2, b.y-b.h/2, b.w, b.h);
-        if(b.y < -30) { bullets.splice(i, 1); return; }
+    // 只有在遊玩或問答狀態時，才更新遊戲邏輯
+    if (gameState === 'PLAYING' || gameState === 'BOMB_QTE' || gameState === 'UPGRADE_QTE') {
+        player.update(dt); player.draw();
         
-        let hit = false;
-        enemies.forEach(e => {
-            if(!hit && Math.abs(b.x - e.x) < e.w/2 + b.w/2 && b.y > e.y - e.h/2 && b.y < e.y + e.h/2) {
-                e.hp -= (player.weaponLevel >= 3 ? 2 : 1.2); 
-                createExplosion(b.x, b.y, b.c, 2);
-                if (!b.pierce) hit = true; 
-                if(e.hp <= 0 && !e.dead) {
-                    e.dead = true; 
-                    createExplosion(e.x, e.y, e.isBoss?'#ff0055':'#ffaa00', e.isBoss?80:15);
-                    if(e.isBoss) {
-                        addScore(1000 * currentStage); currentBoss = null; document.getElementById('boss-ui').style.display = 'none';
-                        // 需求 2: Boss 死亡後噴射 3 個隨機掉落物
-                        for(let k=0; k<3; k++) drops.push(new DropItem(e.x - 40 + k*40, e.y));
-                        
-                        if(currentStage >= 10) { gameState = 'WIN'; alert("！！！恭喜通關！！！您成功拯救了整個星系！"); location.reload(); }
-                        else { stageManager.nextStage(); }
-                    } else { 
-                        // 需求 2: 一般與中型敵人只給分數，不給掉落物了
-                        addScore(e.tier === 'medium' ? 50 : 10); 
+        if(player.switchCd > 0) document.getElementById('wpn-cd').innerText = `[切換: ${(player.switchCd/60).toFixed(1)}s]`;
+        else document.getElementById('wpn-cd').innerText = ''; 
+
+        if(upgradeCooldown > 0) {
+            upgradeCooldown -= dt; document.getElementById('upg-cd').innerText = `[空投: ${(upgradeCooldown/60).toFixed(1)}s]`;
+        } else { document.getElementById('upg-cd').innerText = '[空投: 準備就緒]'; }
+
+        stageManager.update(sDt);
+        if (currentBoss) document.getElementById('boss-hp-bar').style.width = (Math.max(0, currentBoss.hp) / currentBoss.maxHp)*100 + '%';
+
+        bullets.forEach((b, i) => {
+            b.y += b.vy * dt; b.x += b.vx * dt; ctx.fillStyle = b.c; ctx.fillRect(b.x-b.w/2, b.y-b.h/2, b.w, b.h);
+            if(b.y < -30) { bullets.splice(i, 1); return; }
+            
+            let hit = false;
+            enemies.forEach(e => {
+                if(!hit && Math.abs(b.x - e.x) < e.w/2 + b.w/2 && b.y > e.y - e.h/2 && b.y < e.y + e.h/2) {
+                    e.hp -= (player.weaponLevel >= 3 ? 2 : 1.2); 
+                    createExplosion(b.x, b.y, b.c, 2);
+                    if (!b.pierce) hit = true; 
+                    if(e.hp <= 0 && !e.dead) {
+                        e.dead = true; 
+                        createExplosion(e.x, e.y, e.isBoss?'#ff0055':'#ffaa00', e.isBoss?80:15);
+                        if(e.isBoss) {
+                            addScore(1000 * currentStage); currentBoss = null; document.getElementById('boss-ui').style.display = 'none';
+                            for(let k=0; k<3; k++) drops.push(new DropItem(e.x - 40 + k*40, e.y));
+                            if(currentStage >= 10) { showSummaryScreen(true); } else { stageManager.nextStage(); }
+                        } else { addScore(e.tier === 'medium' ? 50 : 10); }
                     }
                 }
-            }
+            });
+            if(hit) bullets.splice(i, 1);
         });
-        if(hit) bullets.splice(i, 1);
-    });
-    enemies = enemies.filter(e => !e.dead);
+        enemies = enemies.filter(e => !e.dead);
 
-    ctx.save(); ctx.globalCompositeOperation = 'lighter'; 
-    enemyBullets.forEach((eb, i) => {
-        if(eb.isCurve) eb.vx += eb.curveDir;
-        eb.x += eb.vx * sDt; eb.y += eb.vy * sDt;
-        ctx.fillStyle = eb.c; ctx.beginPath(); ctx.arc(eb.x, eb.y, eb.size, 0, Math.PI*2); ctx.fill();
-        if (Math.hypot(player.x - eb.x, player.y - eb.y) < 8 + eb.size) { enemyBullets.splice(i, 1); player.hit(); }
-        if(eb.y > ch+20 || eb.x < -20 || eb.x > cw+20) enemyBullets.splice(i, 1);
-    });
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; 
+        enemyBullets.forEach((eb, i) => {
+            if(eb.isCurve) eb.vx += eb.curveDir;
+            eb.x += eb.vx * sDt; eb.y += eb.vy * sDt;
+            ctx.fillStyle = eb.c; ctx.beginPath(); ctx.arc(eb.x, eb.y, eb.size, 0, Math.PI*2); ctx.fill();
+            if (Math.hypot(player.x - eb.x, player.y - eb.y) < 8 + eb.size) { enemyBullets.splice(i, 1); player.hit(); }
+            if(eb.y > ch+20 || eb.x < -20 || eb.x > cw+20) enemyBullets.splice(i, 1);
+        });
 
-    enemies.forEach((e, ei) => {
-        e.update(sDt); e.draw();
-        if(Math.hypot(player.x - e.x, player.y - e.y) < (player.w + e.w)/3) { player.hit(); e.hp -= 5; } 
-        if(!e.isBoss && e.y > ch+50) enemies.splice(ei, 1); 
-    });
-    ctx.restore();
+        enemies.forEach((e, ei) => {
+            e.update(sDt); e.draw();
+            if(Math.hypot(player.x - e.x, player.y - e.y) < (player.w + e.w)/3) { player.hit(); e.hp -= 5; } 
+            if(!e.isBoss && e.y > ch+50) enemies.splice(ei, 1); 
+        });
+        ctx.restore();
 
-    drops.forEach((dp, i) => {
-        dp.update(sDt); dp.draw();
-        if(Math.hypot(player.x - dp.x, player.y - dp.y) < 35) {
-            if(dp.type === 'power' && player.weaponLevel < player.maxLevel) player.weaponLevel++;
-            else if(dp.type === 'shield') player.shield = Math.min(player.maxShield, player.shield + 2); 
-            else if(dp.type === 'bomb' && player.bombs < player.maxBombs) player.bombs++; 
-            createExplosion(dp.x, dp.y, dp.color, 15); drops.splice(i, 1); updateUI();
-        }
-        if(dp.y > ch+30) drops.splice(i, 1);
-    });
+        drops.forEach((dp, i) => {
+            dp.update(sDt); dp.draw();
+            if(Math.hypot(player.x - dp.x, player.y - dp.y) < 35) {
+                if(dp.type === 'power' && player.weaponLevel < player.maxLevel) player.weaponLevel++;
+                else if(dp.type === 'shield') player.shield = Math.min(player.maxShield, player.shield + 2); 
+                else if(dp.type === 'bomb' && player.bombs < player.maxBombs) player.bombs++; 
+                createExplosion(dp.x, dp.y, dp.color, 15); drops.splice(i, 1); updateUI();
+            }
+            if(dp.y > ch+30) drops.splice(i, 1);
+        });
+    }
 
+    // 爆炸粒子特效 (即使在選單也能繼續播放完畢)
     particles.forEach((p, i) => {
-        p.x += p.vx * sDt; p.y += p.vy * sDt; p.alpha -= 0.02 * sDt;
+        p.x += p.vx * dt; p.y += p.vy * dt; p.alpha -= 0.02 * dt;
         ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.alpha); ctx.fillRect(p.x, p.y, p.size, p.size);
         if(p.alpha <= 0) particles.splice(i, 1);
     });
@@ -531,11 +574,28 @@ function loop(timestamp) {
     requestAnimationFrame(loop);
 }
 
+// ====== 綁定選單按鈕事件 ======
+function startGame() {
+    document.getElementById('start-screen').style.display = 'none';
+    initGame(); gameState = 'PLAYING';
+}
+function restartGame() {
+    document.getElementById('summary-screen').style.display = 'none';
+    initGame(); gameState = 'PLAYING';
+}
+
+document.getElementById('btn-start-game').addEventListener('click', startGame);
+document.getElementById('btn-start-game').addEventListener('touchstart', e => { e.preventDefault(); startGame(); });
+document.getElementById('btn-restart-game').addEventListener('click', restartGame);
+document.getElementById('btn-restart-game').addEventListener('touchstart', e => { e.preventDefault(); restartGame(); });
+
+
+// 操作綁定
 window.addEventListener('keydown', e => { 
     keys[e.key] = true; 
     if(e.key==='x' || e.key==='X' || e.key==='b' || e.key==='B') triggerQTE('BOMB'); 
     if(e.key==='c' || e.key==='C') player.switchWeapon();
-    if(e.key==='v' || e.key==='V') triggerQTE('UPGRADE'); // 快捷鍵支援
+    if(e.key==='v' || e.key==='V') triggerQTE('UPGRADE'); 
 });
 window.addEventListener('keyup', e => keys[e.key] = false);
 
@@ -545,25 +605,26 @@ const joyStick = document.getElementById('joystick-stick');
 let joyActive = false, touchShooting = false, joyCenter = {x:0, y:0};
 
 joyZone.addEventListener('touchstart', e => {
-    e.preventDefault(); let t = e.changedTouches[0]; joyActive = true; joyCenter = { x: t.clientX, y: t.clientY };
-    joyBase.style.opacity = '0.8'; joyStick.style.transition = 'none'; // 按下時變亮，取消延遲
+    e.preventDefault(); if (gameState !== 'PLAYING') return;
+    let t = e.changedTouches[0]; joyActive = true; joyCenter = { x: t.clientX, y: t.clientY };
+    joyBase.style.opacity = '0.8'; joyStick.style.transition = 'none'; 
     joyBase.style.left = joyCenter.x + 'px'; joyBase.style.top = joyCenter.y + 'px'; joyStick.style.transform = `translate(-50%, -50%)`;
 }, {passive: false});
 joyZone.addEventListener('touchmove', e => {
-    e.preventDefault(); if (!joyActive) return; let t = e.changedTouches[0]; let dx = t.clientX - joyCenter.x, dy = t.clientY - joyCenter.y;
+    e.preventDefault(); if (!joyActive || gameState !== 'PLAYING') return; 
+    let t = e.changedTouches[0]; let dx = t.clientX - joyCenter.x, dy = t.clientY - joyCenter.y;
     let dist = Math.hypot(dx, dy), maxD = 45; if (dist > maxD) { dx = (dx/dist) * maxD; dy = (dy/dist) * maxD; }
     joyStick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; player.vx = (dx / maxD) * player.speed; player.vy = (dy / maxD) * player.speed;
 }, {passive: false});
 const resetJoy = e => { 
     e.preventDefault(); joyActive = false; 
-    joyBase.style.opacity = '0.3'; // 放開時變回半透明
-    joyBase.style.left = '120px'; joyBase.style.top = 'calc(100% - 120px)'; // 搖桿底座回到預設左下角
-    joyStick.style.transition = 'transform 0.2s'; joyStick.style.transform = `translate(-50%, -50%)`; // 內圈增加回彈動畫
+    joyBase.style.opacity = '0.3'; joyBase.style.left = '120px'; joyBase.style.top = 'calc(100% - 120px)'; 
+    joyStick.style.transition = 'transform 0.2s'; joyStick.style.transform = `translate(-50%, -50%)`; 
     player.vx = 0; player.vy = 0; 
 };
 joyZone.addEventListener('touchend', resetJoy); joyZone.addEventListener('touchcancel', resetJoy);
 
-document.getElementById('btn-shoot').addEventListener('touchstart', e => { e.preventDefault(); touchShooting = true; });
+document.getElementById('btn-shoot').addEventListener('touchstart', e => { e.preventDefault(); if(gameState==='PLAYING') touchShooting = true; });
 document.getElementById('btn-shoot').addEventListener('touchend', e => { e.preventDefault(); touchShooting = false; });
 document.getElementById('btn-bomb').addEventListener('touchstart', e => { e.preventDefault(); triggerQTE('BOMB'); });
 document.getElementById('btn-switch').addEventListener('touchstart', e => { e.preventDefault(); player.switchWeapon(); });
@@ -571,7 +632,8 @@ document.getElementById('btn-upgrade').addEventListener('touchstart', e => { e.p
 
 window.addEventListener('resize', () => { cw = canvas.width = window.innerWidth; ch = canvas.height = window.innerHeight; });
 
-updateUI(); requestAnimationFrame(loop);
+// 初始化背景畫面，等待玩家點擊開始
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
