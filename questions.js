@@ -1,4 +1,4 @@
-const externalQuestions = [
+const questions = [
     {
         "q": "品睿有2雙皮鞋和3雙布鞋，要選其中1雙鞋子穿，他有幾種不同的選擇?",
         "options": ["5種", "6種", "7種", "8種"],
@@ -156,3 +156,4 @@ const externalQuestions = [
     }
 
 ];
+module.exports = questions;
