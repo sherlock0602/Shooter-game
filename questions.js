@@ -156,4 +156,4 @@ const questions = [
     }
 
 ];
-module.exports = questions;
+window.externalQuestions = questions;
