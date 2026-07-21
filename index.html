@@ -133,7 +133,12 @@ let questionBank = [
     { q: "當戰機失去一條生命時，分數會發生什麼變化？", options: ["清零", "扣除 10%", "扣除 50%", "不變"], ans: 1 },
     { q: "切換武器系統的冷卻時間大約是幾秒？", options: ["沒有冷卻", "1 秒", "2 秒", "5 秒"], ans: 2 }
 ];
-if (typeof externalQuestions !== 'undefined') { questionBank = externalQuestions; }
+if (typeof window.externalQuestions !== 'undefined') { 
+        questionBank = window.externalQuestions; 
+        console.log("題目已成功載入:", questionBank);
+    } else {
+        console.warn("未能讀取 externalQuestions，使用預設題目");
+    }
 
 function addScore(points) { score += points; updateUI(); }
 function penalizeScore() { score = Math.floor(score * 0.9); updateUI(); }
